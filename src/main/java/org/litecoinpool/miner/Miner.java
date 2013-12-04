@@ -5,15 +5,14 @@ import java.net.URL;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
-import java.util.Observable;
-import java.util.Observer;
 
+import org.litecoinpool.miner.Worker.WorkerListener;
 import org.threadly.concurrent.PriorityScheduledExecutor;
 import org.threadly.concurrent.SubmitterSchedulerInterface;
 import org.threadly.util.Clock;
 import org.threadly.util.ExceptionUtils;
 
-public class Miner implements Observer, Runnable {
+public class Miner implements WorkerListener, Runnable {
   private static final String DEFAULT_URL = "http://127.0.0.1:9332/";
   private static final String DEFAULT_AUTH = "rpcuser:rpcpass";
   private static final long DEFAULT_SCAN_TIME = 5000;
@@ -49,7 +48,7 @@ public class Miner implements Observer, Runnable {
     if (args.length > 4)
       retryPause = Integer.parseInt(args[5]) * 1000L;
     
-    int minThreadCount = Math.max(cpuCount, nThread);
+    int minThreadCount = Math.max(cpuCount, nThread + 2);
     int maxThreadCount = Math.max(minThreadCount, cpuCount * 2);
     PriorityScheduledExecutor scheduler = new PriorityScheduledExecutor(minThreadCount, maxThreadCount, 1000 * 10);
     
@@ -100,8 +99,7 @@ public class Miner implements Observer, Runnable {
   }
   
   @Override
-  public void update(Observable o, Object arg) {
-    Worker.Notification n = (Worker.Notification) arg;
+  public void update(Worker.Notification n) {
     if (n == Worker.Notification.SYSTEM_ERROR) {
       log("System error");
       System.exit(1);

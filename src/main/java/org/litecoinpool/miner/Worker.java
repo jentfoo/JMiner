@@ -7,17 +7,18 @@ import java.net.URL;
 import java.security.AccessControlException;
 import java.security.GeneralSecurityException;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
-import java.util.Observable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.threadly.concurrent.SubmitterSchedulerInterface;
+import org.threadly.concurrent.collections.ConcurrentArrayList;
 import org.threadly.concurrent.future.FutureUtils;
 import org.threadly.util.ExceptionUtils;
 
-public class Worker extends Observable implements Runnable {
+public class Worker implements Runnable {
   private static final long WORK_TIMEOUT = 60 * 1000; // ms
   
   public static enum Notification {
@@ -34,6 +35,7 @@ public class Worker extends Observable implements Runnable {
   private final long retryPause; // ms
   
   private volatile Work curWork = null;
+  private volatile boolean running = false; // only changed when synchronized to this
   private URL lpUrl = null;
   private HttpURLConnection lpConn = null;
   private AtomicLong hashes = new AtomicLong(0L);
@@ -57,22 +59,23 @@ public class Worker extends Observable implements Runnable {
     return hashes.get();
   }
   
-  private volatile boolean running = false;
-  
-  public synchronized void stop() {
-    running = false;
-    this.notifyAll();
+  public void stop() {
+    synchronized (this) {
+      running = false;
+      this.notifyAll();
+    }
   }
   
   @Override
   public void run() {
     List<Future<?>> futures = new ArrayList<Future<?>>(threadCount + 1);
     running = true;
+    for (int i = 0; i < threadCount; ++i) {
+      Future<?> f = scheduler.submit(new WorkChecker(i));
+      futures.add(f);
+    }
+
     synchronized (this) {
-      for (int i = 0; i < threadCount; ++i) {
-        Future<?> f = scheduler.submit(new WorkChecker(i));
-        futures.add(f);
-      }
       do {
         try {
           if (curWork == null || lpUrl == null || 
@@ -83,21 +86,20 @@ public class Worker extends Observable implements Runnable {
                 if ((lpUrl = curWork.getLongPollingURL()) != null) {
                   Future<?> f = scheduler.submit(new LongPoller());
                   futures.add(f);
-                  setChanged();
                   notifyObservers(Notification.LONG_POLLING_ENABLED);
                 }
               } catch (Exception e) {
                 ExceptionUtils.handleException(e);
               }
             }
-            setChanged();
             notifyObservers(Notification.NEW_WORK);
           }
-          if (! running) {
+          if (running) {
+            this.wait(Math.min(scanTime,
+                               Math.max(1L, WORK_TIMEOUT - curWork.getAge())));
+          } else {
             break;
           }
-          this.wait(Math.min(scanTime,
-                             Math.max(1L, WORK_TIMEOUT - curWork.getAge())));
         } catch (InterruptedException e) {
           return; // let thread exit
         } catch (NullPointerException e) {
@@ -117,18 +119,35 @@ public class Worker extends Observable implements Runnable {
       ExceptionUtils.handleException(e.getCause());
     }
     curWork = null;
-    setChanged();
     notifyObservers(Notification.TERMINATED);
   }
   
-  private synchronized Work getWork() throws InterruptedException {
+  private final ConcurrentArrayList<WorkerListener> listeners = new ConcurrentArrayList<WorkerListener>(0, 1);
+
+  public void addObserver(WorkerListener o) {
+    listeners.addLast(o);
+  }
+  
+  private void notifyObservers(Notification longPollingEnabled) {
+    Iterator<WorkerListener> it = listeners.iterator();
+    while (it.hasNext()) {
+      try {
+        it.next().update(longPollingEnabled);
+      } catch (Throwable t) {
+        ExceptionUtils.handleException(t);
+      }
+    }
+  }
+
+  // should have this locked before calling
+  private Work getWork() throws InterruptedException {
     while (running) {
       try {
         return new Work(url, auth);
       } catch (Exception e) {
-        if (!running)
+        if (! running) {
           break;
-        setChanged();
+        }
         if (e instanceof IllegalArgumentException) {
           notifyObservers(Notification.AUTHENTICATION_ERROR);
           stop();
@@ -143,9 +162,15 @@ public class Worker extends Observable implements Runnable {
           notifyObservers(Notification.COMMUNICATION_ERROR);
         }
         curWork = null;
-        this.wait(retryPause);
+        
+        if (running) {
+          this.wait(retryPause);
+        } else {
+          break;
+        }
       }
     }
+    
     return null;
   }
   
@@ -162,20 +187,15 @@ public class Worker extends Observable implements Runnable {
           if (! running) {
             break;
           }
-          synchronized (Worker.this) {
-            setChanged();
-            notifyObservers(Notification.NEW_BLOCK_DETECTED);
-            setChanged();
-            notifyObservers(Notification.NEW_WORK);
-            // Worker.this.notify();
-          }
+          
+          notifyObservers(Notification.NEW_BLOCK_DETECTED);
+          notifyObservers(Notification.NEW_WORK);
         } catch (SocketTimeoutException e) {
           // TODO - handle?
         } catch (Exception e) {
           if (!running) {
             break;
           }
-          setChanged();
           notifyObservers(Notification.LONG_POLLING_FAILED);
           try {
             Thread.sleep(retryPause);
@@ -208,7 +228,7 @@ public class Worker extends Observable implements Runnable {
         while (running) {
           try {
             if (curWork.meetsTarget(nonce, hasher)) {
-              new Thread(new WorkSubmitter(curWork, nonce)).start();
+              scheduler.execute(new WorkSubmitter(curWork, nonce));
               if (lpUrl == null) {
                 synchronized (Worker.this) {
                   curWork = null;
@@ -227,7 +247,6 @@ public class Worker extends Observable implements Runnable {
           }
         }
       } catch (GeneralSecurityException e) {
-        setChanged();
         notifyObservers(Notification.SYSTEM_ERROR);
         stop();
       }
@@ -247,11 +266,14 @@ public class Worker extends Observable implements Runnable {
     public void run() {
       try {
         boolean result = work.submit(nonce);
-        setChanged();
         notifyObservers(result ? Notification.POW_TRUE : Notification.POW_FALSE);
       } catch (IOException e) {
         // TODO - handle?
       }
     }
+  }
+  
+  public interface WorkerListener {
+    public void update(Worker.Notification n);
   }
 }
