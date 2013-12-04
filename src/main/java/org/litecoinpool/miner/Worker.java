@@ -80,12 +80,13 @@ public class Worker extends Observable implements Runnable {
     running = true;
     synchronized (this) {
       threads = new Thread[1 + nThreads];
-      for (int i = 0; i < nThreads; ++i)
+      for (int i = 0; i < nThreads; ++i) {
         (threads[1 + i] = new Thread(new WorkChecker(i))).start();
+      }
       do {
         try {
-          if (curWork == null || curWork.getAge() >= WORK_TIMEOUT
-              || lpUrl == null) {
+          if (curWork == null || lpUrl == null || 
+              curWork.getAge() >= WORK_TIMEOUT) {
             curWork = getWork();
             if (lpUrl == null) {
               try {
@@ -107,15 +108,16 @@ public class Worker extends Observable implements Runnable {
           this.wait(Math.min(scanTime,
                              Math.max(1L, WORK_TIMEOUT - curWork.getAge())));
         } catch (InterruptedException e) {
-          // TODO - handle?
+          return; // let thread exit
         } catch (NullPointerException e) {
           // TODO - handle?
         }
       } while (running);
       running = false;
     }
-    if (lpConn != null)
+    if (lpConn != null) {
       lpConn.disconnect();
+    }
     try {
       for (Thread t : threads) {
         if (t != null) {
@@ -123,14 +125,14 @@ public class Worker extends Observable implements Runnable {
         }
       }
     } catch (InterruptedException e) {
-      // TODO - handle?
+      return; // let thread exit
     }
     curWork = null;
     setChanged();
     notifyObservers(Notification.TERMINATED);
   }
   
-  private synchronized Work getWork() {
+  private synchronized Work getWork() throws InterruptedException {
     while (running) {
       try {
         return new Work(url, auth);
@@ -151,11 +153,8 @@ public class Worker extends Observable implements Runnable {
         } else {
           notifyObservers(Notification.COMMUNICATION_ERROR);
         }
-        try {
-          curWork = null;
-          this.wait(retryPause);
-        } catch (InterruptedException ie) {
-        }
+        curWork = null;
+        this.wait(retryPause);
       }
     }
     return null;
@@ -192,7 +191,7 @@ public class Worker extends Observable implements Runnable {
           try {
             Thread.sleep(retryPause);
           } catch (InterruptedException ie) {
-            // TODO - handle?
+            return; // let thread exit
           }
         }
       }
@@ -239,7 +238,7 @@ public class Worker extends Observable implements Runnable {
             try {
               Thread.sleep(1L);
             } catch (InterruptedException ie) {
-              // TODO - handle?
+              return; // let thread exit
             }
           }
         }

@@ -37,8 +37,8 @@ public class Work {
     this((HttpURLConnection) url.openConnection(), url, auth);
   }
   
-  public Work(HttpURLConnection conn, URL mainUrl, String auth)
-      throws IOException {
+  public Work(HttpURLConnection conn, 
+              URL mainUrl, String auth) throws IOException {
     String request = "{\"method\": \"getwork\", \"params\": [], \"id\":0}";
     
     conn = getJsonRpcConnection(conn, request, auth);
@@ -50,13 +50,15 @@ public class Work {
     
     responseTime = Clock.lastKnownTimeMillis();
     Matcher m = dataPattern.matcher(content);
-    if (!m.find())
+    if (! m.find()) {
       throw new RuntimeException(content);
+    }
     String sData = m.group(1);
     data = hexStringToByteArray(sData);
     m = targetPattern.matcher(content);
-    if (!m.find())
+    if (! m.find()) {
       throw new RuntimeException(content);
+    }
     String sTarget = m.group(1);
     target = hexStringToByteArray(sTarget);
     header = headerByData(data);
@@ -72,8 +74,7 @@ public class Work {
     d[77] = (byte) (nonce >> 16);
     d[76] = (byte) (nonce >> 24);
     String sData = byteArrayToHexString(d);
-    String request =
-                     "{\"method\": \"getwork\", \"params\": [ \"" + sData
+    String request = "{\"method\": \"getwork\", \"params\": [ \"" + sData
                          + "\" ], \"id\":1}";
     
     HttpURLConnection conn = getJsonRpcConnection(url, request, auth);
@@ -139,7 +140,7 @@ public class Work {
     return h;
   }
   
-  public static String byteArrayToHexString(byte[] b) {
+  protected static String byteArrayToHexString(byte[] b) {
     StringBuilder sb = new StringBuilder(80);
     for (int i = 0; i < b.length; i++) {
       sb.append(Integer.toString((b[i] & 0xff) + 0x100, 16).substring(1));
@@ -147,13 +148,14 @@ public class Work {
     return sb.toString();
   }
   
-  public static byte[] hexStringToByteArray(String s) {
+  protected static byte[] hexStringToByteArray(String s) {
     int len = s.length();
     byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2) {
       data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1),
                                                                                       16));
     }
+    
     return data;
   }
   
@@ -187,6 +189,7 @@ public class Work {
       case 2:
         ar[--a] = '=';
     }
+    
     return new String(ar);
   }
   
