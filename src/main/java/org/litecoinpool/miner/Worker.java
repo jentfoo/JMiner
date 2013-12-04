@@ -6,10 +6,15 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.security.AccessControlException;
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Observable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.LockSupport;
 
+import org.threadly.concurrent.SubmitterSchedulerInterface;
+import org.threadly.concurrent.future.FutureUtils;
 import org.threadly.util.ExceptionUtils;
 
 public class Worker extends Observable implements Runnable {
@@ -21,42 +26,27 @@ public class Worker extends Observable implements Runnable {
     NEW_BLOCK_DETECTED, NEW_WORK, POW_TRUE, POW_FALSE, TERMINATED
   };
   
-  private URL url;
-  private String auth;
-  private long scanTime; // ms
-  private long retryPause; // ms
-  private int nThreads;
-  private double throttleFactor;
+  private final SubmitterSchedulerInterface scheduler;
+  private final int threadCount;
+  private final URL url;
+  private final String auth;
+  private final long scanTime; // ms
+  private final long retryPause; // ms
   
   private volatile Work curWork = null;
   private URL lpUrl = null;
   private HttpURLConnection lpConn = null;
   private AtomicLong hashes = new AtomicLong(0L);
   
-  public Worker(URL url, String auth, long scanMillis, long pauseMillis) {
-    this(url, auth, scanMillis, pauseMillis, Runtime.getRuntime()
-                                                    .availableProcessors());
-  }
-  
-  public Worker(URL url, String auth, long scanMillis, long pauseMillis,
-                int nThreads) {
-    this(url, auth, scanMillis, pauseMillis, nThreads, 1.0);
-  }
-  
-  public Worker(URL url, String auth, long scanMillis, long pauseMillis,
-                int nThreads, double throttle) {
+  public Worker(SubmitterSchedulerInterface scheduler, int threadCount, 
+                URL url, String auth, 
+                long scanMillis, long pauseMillis) {
+    this.scheduler = scheduler;
+    this.threadCount = threadCount;
     this.url = url;
     this.auth = auth;
     this.scanTime = scanMillis;
     this.retryPause = pauseMillis;
-    if (nThreads < 0) {
-      throw new IllegalArgumentException();
-    }
-    this.nThreads = nThreads;
-    if (throttle <= 0.0 || throttle > 1.0) {
-      throw new IllegalArgumentException();
-    }
-    this.throttleFactor = 1.0 / throttle - 1.0;
   }
   
   public long getRetryPause() {
@@ -76,12 +66,12 @@ public class Worker extends Observable implements Runnable {
   
   @Override
   public void run() {
-    Thread[] threads;
+    List<Future<?>> futures = new ArrayList<Future<?>>(threadCount + 1);
     running = true;
     synchronized (this) {
-      threads = new Thread[1 + nThreads];
-      for (int i = 0; i < nThreads; ++i) {
-        (threads[1 + i] = new Thread(new WorkChecker(i))).start();
+      for (int i = 0; i < threadCount; ++i) {
+        Future<?> f = scheduler.submit(new WorkChecker(i));
+        futures.add(f);
       }
       do {
         try {
@@ -91,7 +81,8 @@ public class Worker extends Observable implements Runnable {
             if (lpUrl == null) {
               try {
                 if ((lpUrl = curWork.getLongPollingURL()) != null) {
-                  (threads[0] = new Thread(new LongPoller())).start();
+                  Future<?> f = scheduler.submit(new LongPoller());
+                  futures.add(f);
                   setChanged();
                   notifyObservers(Notification.LONG_POLLING_ENABLED);
                 }
@@ -102,7 +93,7 @@ public class Worker extends Observable implements Runnable {
             setChanged();
             notifyObservers(Notification.NEW_WORK);
           }
-          if (!running) {
+          if (! running) {
             break;
           }
           this.wait(Math.min(scanTime,
@@ -119,13 +110,11 @@ public class Worker extends Observable implements Runnable {
       lpConn.disconnect();
     }
     try {
-      for (Thread t : threads) {
-        if (t != null) {
-          t.join();
-        }
-      }
+      FutureUtils.blockTillAllCompleteOrFirstError(futures);
     } catch (InterruptedException e) {
       return; // let thread exit
+    } catch (ExecutionException e) {
+      ExceptionUtils.handleException(e.getCause());
     }
     curWork = null;
     setChanged();
@@ -201,13 +190,14 @@ public class Worker extends Observable implements Runnable {
   }
   
   private class WorkChecker implements Runnable {
-    private static final long THROTTLE_WAIT_TIME = 100L * 1000000L; // ns
     private int index;
     private int step;
     
     public WorkChecker(int index) {
       this.index = index;
-      for (step = 1; step < nThreads; step <<= 1);
+      for (step = 1; step < threadCount;) {
+        step <<= 1;
+      }
     }
     
     @Override
@@ -215,7 +205,6 @@ public class Worker extends Observable implements Runnable {
       try {
         Hasher hasher = new Hasher();
         int nonce = index;
-        long dt, t0 = System.nanoTime();
         while (running) {
           try {
             if (curWork.meetsTarget(nonce, hasher)) {
@@ -229,11 +218,6 @@ public class Worker extends Observable implements Runnable {
             }
             nonce += step;
             hashes.incrementAndGet();
-            if (throttleFactor > 0.0
-                && (dt = System.nanoTime() - t0) > THROTTLE_WAIT_TIME) {
-              LockSupport.parkNanos(Math.max(0L, (long) (throttleFactor * dt)));
-              t0 = System.nanoTime();
-            }
           } catch (NullPointerException e) {
             try {
               Thread.sleep(1L);
