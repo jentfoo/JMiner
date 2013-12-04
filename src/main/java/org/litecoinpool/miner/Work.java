@@ -12,6 +12,8 @@ import java.security.GeneralSecurityException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.threadly.util.Clock;
+
 public class Work {
   private static final int DEFAULT_TIMEOUT = 10000; // ms
   private static final Pattern dataPattern = Pattern.compile("\"data\"\\s*:\\s*\"([0-9a-f]+)\"");
@@ -46,7 +48,7 @@ public class Work {
     }
     String content = getConnectionContent(conn);
     
-    responseTime = System.currentTimeMillis();
+    responseTime = Clock.lastKnownTimeMillis();
     Matcher m = dataPattern.matcher(content);
     if (!m.find())
       throw new RuntimeException(content);
@@ -115,7 +117,7 @@ public class Work {
   }
   
   public long getAge() {
-    return System.currentTimeMillis() - responseTime;
+    return Clock.lastKnownTimeMillis() - responseTime;
   }
   
   public URL getLongPollingURL() throws URISyntaxException,
@@ -232,16 +234,5 @@ public class Work {
     String content = bos.toString();
     is.close();
     return content;
-  }
-  
-  // TODO - remove?
-  public static boolean test() {
-    try {
-      byte[] header = hexStringToByteArray("01000000f615f7ce3b4fc6b8f61e8f89aedb1d0852507650533a9e3b10b9bbcc30639f279fcaa86746e1ef52d3edb3c4ad8259920d509bd073605c9bf1d59983752a6b06b817bb4ea78e011d012d59d4");
-      byte[] hash = new Hasher().hash(header);
-      return byteArrayToHexString(hash).equals("d9eb8663ffec241c2fb118adb7de97a82c803b6ff46d57667935c81001000000");
-    } catch (GeneralSecurityException e) {
-      return false;
-    }
   }
 }

@@ -19,13 +19,12 @@ public class Hasher {
   }
   
   public byte[] hash(byte[] header) throws GeneralSecurityException {
-    return hash(header, header[76] | header[77] << 8 | header[78] << 16
-                        | header[79] << 24);
+    return hash(header, 
+                header[76] | header[77] << 8 | 
+                  header[78] << 16 | header[79] << 24);
   }
   
   public byte[] hash(byte[] header, int nonce) throws GeneralSecurityException {
-    int i, j, k;
-    
     arraycopy(header, 0, B, 0, 76);
     B[76] = (byte) (nonce >> 0);
     B[77] = (byte) (nonce >> 8);
@@ -35,37 +34,38 @@ public class Hasher {
     B[80] = 0;
     B[81] = 0;
     B[82] = 0;
-    for (i = 0; i < 4; i++) {
+    for (int i = 0; i < 4; i++) {
       B[83] = (byte) (i + 1);
       mac.update(B, 0, 84);
       mac.doFinal(H, 0);
       
-      for (j = 0; j < 8; j++) {
-        X[i * 8 + j] =
-                       (H[j * 4 + 0] & 0xff) << 0 | (H[j * 4 + 1] & 0xff) << 8
+      for (int j = 0; j < 8; j++) {
+        X[i * 8 + j] = (H[j * 4 + 0] & 0xff) << 0 | (H[j * 4 + 1] & 0xff) << 8
                            | (H[j * 4 + 2] & 0xff) << 16
                            | (H[j * 4 + 3] & 0xff) << 24;
       }
     }
     
-    for (i = 0; i < 1024; i++) {
+    for (int i = 0; i < 1024; i++) {
       arraycopy(X, 0, V, i * 32, 32);
       xorSalsa8(0, 16);
       xorSalsa8(16, 0);
     }
-    for (i = 0; i < 1024; i++) {
-      k = (X[16] & 1023) * 32;
-      for (j = 0; j < 32; j++)
+    for (int i = 0; i < 1024; i++) {
+      int k = (X[16] & 1023) * 32;
+      for (int j = 0; j < 32; j++) {
         X[j] ^= V[k + j];
+      }
       xorSalsa8(0, 16);
       xorSalsa8(16, 0);
     }
     
-    for (i = 0; i < 32; i++) {
-      B[i * 4 + 0] = (byte) (X[i] >> 0);
-      B[i * 4 + 1] = (byte) (X[i] >> 8);
-      B[i * 4 + 2] = (byte) (X[i] >> 16);
-      B[i * 4 + 3] = (byte) (X[i] >> 24);
+    for (int i = 0; i < 32; i++) {
+      int intStart = i * 4;
+      B[intStart] = (byte) (X[i] >> 0);
+      B[intStart + 1] = (byte) (X[i] >> 8);
+      B[intStart + 2] = (byte) (X[i] >> 16);
+      B[intStart + 3] = (byte) (X[i] >> 24);
     }
     
     B[128 + 3] = 1;
@@ -143,5 +143,4 @@ public class Hasher {
     X[di + 14] += x14;
     X[di + 15] += x15;
   }
-  
 }

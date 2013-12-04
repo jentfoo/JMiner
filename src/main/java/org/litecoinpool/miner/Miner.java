@@ -8,6 +8,7 @@ import java.util.Date;
 import java.util.Observable;
 import java.util.Observer;
 
+import org.threadly.util.Clock;
 import org.threadly.util.ExceptionUtils;
 
 public class Miner implements Observer {
@@ -49,7 +50,7 @@ public class Miner implements Observer {
   private static final DateFormat logDateFormat = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss] ");
   
   public void log(String str) {
-    System.out.println(logDateFormat.format(new Date()) + str);
+    System.out.println(logDateFormat.format(new Date(Clock.lastKnownTimeMillis())) + str);
   }
   
   public void update(Observable o, Object arg) {
@@ -81,10 +82,10 @@ public class Miner implements Observer {
     } else if (n == Worker.Notification.NEW_WORK) {
       if (lastWorkTime > 0L) {
         long hashes = worker.getHashes() - lastWorkHashes;
-        float speed = (float) hashes / Math.max(1, System.currentTimeMillis() - lastWorkTime);
+        double speed = (double) hashes / Math.max(1, Clock.lastKnownTimeMillis() - lastWorkTime);
         log(String.format("%d hashes, %.2f khash/s", hashes, speed));
       }
-      lastWorkTime = System.currentTimeMillis();
+      lastWorkTime = Clock.lastKnownTimeMillis();
       lastWorkHashes = worker.getHashes();
     }
   }
