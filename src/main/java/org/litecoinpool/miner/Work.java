@@ -74,8 +74,7 @@ public class Work {
     d[77] = (byte) (nonce >> 16);
     d[76] = (byte) (nonce >> 24);
     String sData = byteArrayToHexString(d);
-    String request = "{\"method\": \"getwork\", \"params\": [ \"" + sData
-                         + "\" ], \"id\":1}";
+    String request = "{\"method\": \"getwork\", \"params\": [ \"" + sData + "\" ], \"id\":1}";
     
     HttpURLConnection conn = getJsonRpcConnection(url, request, auth);
     String content = getConnectionContent(conn);
@@ -142,10 +141,12 @@ public class Work {
   }
   
   protected static String byteArrayToHexString(byte[] b) {
-    StringBuilder sb = new StringBuilder(80);
+    StringBuilder sb = new StringBuilder(b.length * 2);
+    
     for (int i = 0; i < b.length; i++) {
       sb.append(Integer.toString((b[i] & 0xff) + 0x100, 16).substring(1));
     }
+    
     return sb.toString();
   }
   
@@ -153,45 +154,11 @@ public class Work {
     int len = s.length();
     byte[] data = new byte[len / 2];
     for (int i = 0; i < len; i += 2) {
-      data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1),
-                                                                                      16));
+      data[i / 2] = (byte)((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1),
+                                                                                     16));
     }
     
     return data;
-  }
-  
-  private final static char[] BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/".toCharArray();
-  private static int[] toInt = new int[128];
-  
-  static {
-    for (int i = 0; i < BASE64_ALPHABET.length; i++) {
-      toInt[BASE64_ALPHABET[i]] = i;
-    }
-  }
-  
-  public static String stringToBase64(String str) {
-    byte[] buf = str.getBytes();
-    int size = buf.length;
-    char[] ar = new char[((size + 2) / 3) * 4];
-    int a = 0;
-    int i = 0;
-    while (i < size) {
-      byte b0 = buf[i++];
-      byte b1 = (i < size) ? buf[i++] : 0;
-      byte b2 = (i < size) ? buf[i++] : 0;
-      ar[a++] = BASE64_ALPHABET[(b0 >> 2) & 0x3f];
-      ar[a++] = BASE64_ALPHABET[((b0 << 4) | ((b1 & 0xFF) >> 4)) & 0x3f];
-      ar[a++] = BASE64_ALPHABET[((b1 << 2) | ((b2 & 0xFF) >> 6)) & 0x3f];
-      ar[a++] = BASE64_ALPHABET[b2 & 0x3f];
-    }
-    switch (size % 3) {
-      case 1:
-        ar[--a] = '=';
-      case 2:
-        ar[--a] = '=';
-    }
-    
-    return new String(ar);
   }
   
   public static HttpURLConnection getJsonRpcConnection(URL url, String request,
@@ -211,7 +178,7 @@ public class Work {
     }
     conn.setRequestMethod("POST");
     if (auth != null) {
-      conn.setRequestProperty("Authorization", "Basic " + stringToBase64(auth));
+      conn.setRequestProperty("Authorization", "Basic " + Base64.stringToBase64(auth));
     }
     conn.setRequestProperty("Content-Type", "application/json");
     conn.setRequestProperty("Content-Length",

@@ -3,9 +3,6 @@ package org.litecoinpool.miner;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Set;
 
 import static java.lang.System.arraycopy;
 import static java.lang.Integer.rotateLeft;
@@ -44,13 +41,11 @@ public class Hasher {
       mac.update(B, 0, 84);
       mac.doFinal(H, 0);
       
-      int xPosOffset = i * 8;
       for (int j = 0; j < 8; j++) {
-        int jint = j * 4;
-        X[xPosOffset + j] = (H[jint] & 0xff) << 0 | 
-                              (H[jint + 1] & 0xff) << 8 | 
-                              (H[jint + 2] & 0xff) << 16 | 
-                              (H[jint + 3] & 0xff) << 24;
+        X[i * 8 + j] = (H[j * 4] & 0xff) << 0 | 
+                          (H[j * 4 + 1] & 0xff) << 8 | 
+                          (H[j * 4 + 2] & 0xff) << 16 | 
+                          (H[j * 4 + 3] & 0xff) << 24;
       }
     }
     
@@ -69,15 +64,14 @@ public class Hasher {
     }
     
     for (int i = 0; i < 32; i++) {
-      int intStart = i * 4;
-      B[intStart] = (byte) (X[i] >> 0);
-      B[intStart + 1] = (byte) (X[i] >> 8);
-      B[intStart + 2] = (byte) (X[i] >> 16);
-      B[intStart + 3] = (byte) (X[i] >> 24);
+      B[i * 4] = (byte) (X[i] >> 0);
+      B[i * 4 + 1] = (byte) (X[i] >> 8);
+      B[i * 4 + 2] = (byte) (X[i] >> 16);
+      B[i * 4 + 3] = (byte) (X[i] >> 24);
     }
     
-    B[128 + 3] = 1;
-    mac.update(B, 0, 128 + 4);
+    B[131] = 1;
+    mac.update(B, 0, 132);
     mac.doFinal(H, 0);
     
     return H;
@@ -100,7 +94,8 @@ public class Hasher {
     int x13 = (X[di + 13] ^= X[xi + 13]);
     int x14 = (X[di + 14] ^= X[xi + 14]);
     int x15 = (X[di + 15] ^= X[xi + 15]);
-    for (int i = 0; i < 8; i += 2) {
+    
+    for (int i = 0; i < 4; i++) {
       x04 ^= rotateLeft(x00 + x12, 7);
       x08 ^= rotateLeft(x04 + x00, 9);
       x12 ^= rotateLeft(x08 + x04, 13);
@@ -134,6 +129,7 @@ public class Hasher {
       x14 ^= rotateLeft(x13 + x12, 13);
       x15 ^= rotateLeft(x14 + x13, 18);
     }
+    
     X[di + 0] += x00;
     X[di + 1] += x01;
     X[di + 2] += x02;
