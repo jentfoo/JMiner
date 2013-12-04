@@ -3,6 +3,9 @@ package org.litecoinpool.miner;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.security.GeneralSecurityException;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 import static java.lang.System.arraycopy;
 import static java.lang.Integer.rotateLeft;
@@ -18,18 +21,20 @@ public class Hasher {
     mac = Mac.getInstance("HmacSHA256");
   }
   
-  public byte[] hash(byte[] header) throws GeneralSecurityException {
+  public byte[] hash(byte[] header, int nonce) throws GeneralSecurityException {
     return hash(header, 
-                header[76] | header[77] << 8 | 
-                  header[78] << 16 | header[79] << 24);
+                (byte)nonce, (byte)(nonce >> 8), 
+                (byte)(nonce >> 16), (byte) (nonce >> 24));
   }
   
-  public byte[] hash(byte[] header, int nonce) throws GeneralSecurityException {
+  protected byte[] hash(byte[] header, 
+                        byte nonceByte1, byte nonceByte2, 
+                        byte nonceByte3, byte nonceByte4) throws GeneralSecurityException {
     arraycopy(header, 0, B, 0, 76);
-    B[76] = (byte) (nonce >> 0);
-    B[77] = (byte) (nonce >> 8);
-    B[78] = (byte) (nonce >> 16);
-    B[79] = (byte) (nonce >> 24);
+    B[76] = nonceByte1;
+    B[77] = nonceByte2;
+    B[78] = nonceByte3;
+    B[79] = nonceByte4;
     mac.init(new SecretKeySpec(B, 0, 80, "HmacSHA256"));
     B[80] = 0;
     B[81] = 0;
@@ -39,10 +44,13 @@ public class Hasher {
       mac.update(B, 0, 84);
       mac.doFinal(H, 0);
       
+      int xPosOffset = i * 8;
       for (int j = 0; j < 8; j++) {
-        X[i * 8 + j] = (H[j * 4 + 0] & 0xff) << 0 | (H[j * 4 + 1] & 0xff) << 8
-                           | (H[j * 4 + 2] & 0xff) << 16
-                           | (H[j * 4 + 3] & 0xff) << 24;
+        int jint = j * 4;
+        X[xPosOffset + j] = (H[jint] & 0xff) << 0 | 
+                              (H[jint + 1] & 0xff) << 8 | 
+                              (H[jint + 2] & 0xff) << 16 | 
+                              (H[jint + 3] & 0xff) << 24;
       }
     }
     

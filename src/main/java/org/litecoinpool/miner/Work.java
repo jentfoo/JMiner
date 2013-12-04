@@ -88,13 +88,14 @@ public class Work {
     }
   }
   
-  public boolean meetsTarget(int nonce, Hasher hasher) throws GeneralSecurityException {
+  protected boolean meetsTarget(int nonce, Hasher hasher) throws GeneralSecurityException {
     byte[] hash = hasher.hash(header, nonce);
     for (int i = hash.length - 1; i >= 0; i--) {
-      if ((hash[i] & 0xff) > (target[i] & 0xff)) {
+      int hashValue = (hash[i] & 0xff);
+      int targetValue = (target[i] & 0xff);
+      if (hashValue > targetValue) {
         return false;
-      }
-      if ((hash[i] & 0xff) < (target[i] & 0xff)) {
+      } else if (hashValue < targetValue) {
         return true;
       }
     }
