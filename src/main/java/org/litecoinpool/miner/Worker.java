@@ -103,7 +103,7 @@ public class Worker implements Runnable {
         } catch (InterruptedException e) {
           return; // let thread exit
         } catch (NullPointerException e) {
-          // TODO - handle?
+          ExceptionUtils.handleException(e);
         }
       } while (running);
       running = false;
@@ -268,7 +268,7 @@ public class Worker implements Runnable {
         boolean result = work.submit(nonce);
         notifyObservers(result ? Notification.POW_TRUE : Notification.POW_FALSE);
       } catch (IOException e) {
-        // TODO - handle?
+        ExceptionUtils.handleException(e);
       }
     }
   }

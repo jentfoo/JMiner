@@ -196,7 +196,7 @@ public class Work {
   
   public static String getConnectionContent(HttpURLConnection conn) throws IOException {
     InputStream is = conn.getInputStream();
-    ByteArrayOutputStream bos = new ByteArrayOutputStream();
+    ByteArrayOutputStream bos = new ByteArrayOutputStream(0);
     int len;
     byte[] buffer = new byte[4096];
     while ((len = is.read(buffer)) != -1) {
