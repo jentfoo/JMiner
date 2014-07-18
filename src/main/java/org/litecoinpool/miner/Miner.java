@@ -7,7 +7,7 @@ import java.text.SimpleDateFormat;
 import java.util.Date;
 
 import org.litecoinpool.miner.Worker.WorkerListener;
-import org.threadly.concurrent.PriorityScheduledExecutor;
+import org.threadly.concurrent.PriorityScheduler;
 import org.threadly.concurrent.SubmitterSchedulerInterface;
 import org.threadly.util.Clock;
 import org.threadly.util.ExceptionUtils;
@@ -50,7 +50,7 @@ public class Miner implements WorkerListener, Runnable {
     
     int minThreadCount = Math.max(cpuCount, nThread + 2);
     int maxThreadCount = Math.max(minThreadCount, cpuCount * 2);
-    PriorityScheduledExecutor scheduler = new PriorityScheduledExecutor(minThreadCount, maxThreadCount, 1000 * 10);
+    PriorityScheduler scheduler = new PriorityScheduler(minThreadCount, maxThreadCount, 1000 * 10);
     
     try {
       Miner m = new Miner(scheduler, nThread, 
